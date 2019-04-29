@@ -1,29 +1,27 @@
 ﻿<!DOCTYPE html>
 <html>
-
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Network Protocols Dynamic Reverse Engineering - Part 1 (GDB)</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body class="stackedit">
   <div class="stackedit__html"><h1 id="network-protocols-dynamic-reverse-engineering---part-1-gdb">Network Protocols Dynamic Reverse Engineering - Part 1 (GDB)</h1>
 <p>In this document I will show some GDB debugging tips to help with network protocols dynamic reverse engineering.</p>
-<p>Why I decided to write this document?<br>
-I finish reading <a href="https://nostarch.com/networkprotocols">Attacking Network Protocols</a> (by <a href="https://twitter.com/tiraniddo">James Forshaw</a>) and decided to document these debugging tips to help others and help myself in the future when I need this again.<br>
-As mention on Chapter 6 (Application Reverse Engineering) of the book, where to set the breakpoints for network protocol reverse engineering is really important in this process. Reverse engineering network protocols from complex applications can be really hard and the starting point should always be the network protocol entry/exit point, the function that receives the frame or the one that sends it. This document is going to use Linux platform, so the following functions are going to be the network entry point:</p>
+<p>Why did I decided to write this document?<br>
+After reading <a href="https://nostarch.com/networkprotocols">Attacking Network Protocols</a> (by <a href="https://twitter.com/tiraniddo">James Forshaw</a>) I came up with the idea of documenting these debugging tips to help others and myself have a reference/guideline for the future.<br>
+As mentioned in Chapter 6 (Application Reverse Engineering) of the book, the location of each breakpoint at the time of reversing network protocols is a key part of the process. Reverse engineering network protocols from complex applications can be really hard and the starting point should always be the network protocol entry/exit point, the function that receives the frame or the one that sends it. This document is going to use the Linux platform, so we are going to work with the following functions:</p>
 <ul>
 <li>recv</li>
 <li>send</li>
 <li>recvfrom</li>
 <li>sendto</li>
 </ul>
-<p>In my opinion practical experience helps in the learning process, so I build some executables to use them as an example and so the reader can use them to practice. These “challenges” can be solve doing some reverse engineering and using the debugging tips described in this document. The challenges source code is also available but if you don’t want the spoiler read them after getting the solution.</p>
+<p>In my opinion practical experience helps in the learning process, so I built a series of executables to be used as examples by the reader at the time of practicing. These “challenges” can be solved doing some reverse engineering and using the debugging tips described in this document. The challenges source code is also available but if you don’t want the spoiler read them after finding the solution.</p>
 <p><a href="https://6e726d.github.io/Linux/GDB/DynamicReverseEngineering/NetworkProtocols/files/challenges.tgz">Download Challenges</a></p>
 <h3 id="gdb-requirements--notes">GDB Requirements &amp; Notes</h3>
-<p>Below a brief description of the GDB commands we use in this document.</p>
+<p>Below is a brief description of the GDB commands we use in this document.</p>
 <p><strong>b</strong> Set a breakpoint.<br>
 <strong>bt</strong> Print the backtrace of the entire stack.<br>
 <strong>tb</strong> Set a temporary breakpoint.<br>
@@ -31,28 +29,33 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>set</strong> Set the value of a variable.<br>
 <strong>c</strong> Continue execution.</p>
 <p>Define the function below on your <em>.gdbinit</em> file, type it in the <em>gdb</em> session or download the <a href="https://6e726d.github.io/Linux/GDB/DynamicReverseEngineering/NetworkProtocols/files/helper.gdb"><em>helper.gdb</em></a> file.</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>(gdb)</strong> define xxd<br>
 <strong>&gt;</strong> dump binary memory dump.bin $arg0 $arg0+$arg1<br>
 <strong>&gt;</strong> shell xxd dump.bin<br>
 <strong>&gt;</strong> end<br>
 <strong>(gdb)</strong></p>
+</div>
 <p>To execute the <em>helper.gdb</em> when running <em>gdb</em> do the following:</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>$</strong> gdb -x helper.gdb ./tcp</p>
+</div>
 <h3 id="calling-convention">Calling convention</h3>
-<p>This document uses executables built for X86-64 architecture. We just need to know the following two concepts related to the calling convention:</p>
+<p>This document uses executables built for the X86-64 architecture. We just need to know the following two concepts related to the calling convention:</p>
 <ol>
 <li>The first six integer or pointer arguments are passed in registers RDI, RSI, RDX, RCX, R8, R9.</li>
-<li>Integral return values up to 64 bits in size are stored in RAX while values up to 128 bit are stored in RAX and RDX.</li>
+<li>Integral return values up to 64 bits in size are stored in RAX while values up to 128 bits are stored in RAX and RDX.</li>
 </ol>
 <h2 id="tcp">TCP</h2>
-<p>In most cases developer use <em>send</em> and <em>recv</em> functions for TCP communications, but it’s also possible to use <em>write</em> and <em>read</em> functions with socket file descriptors.</p>
-<p>Below we have the <em>send</em> function signature and the registers involve in the call.</p>
+<p>In most cases developers use <em>send</em> and <em>recv</em> functions for TCP communications, but it’s also possible to use <em>write</em> and <em>read</em> functions with socket file descriptors.</p>
+<p>Below we have the <em>send</em> function signature and the registers involved in the call.</p>
 <p><strong>ssize_t</strong> send(<strong>int</strong> <em>sockfd</em>, <strong>const void</strong> *<em>buf</em>, <strong>size_t</strong>  <em>len</em>, <strong>int</strong> <em>flags</em>);</p>
 <p><em>sockfd</em> -&gt; RDI<br>
 <em>buf</em> -&gt; RSI<br>
 <em>len</em> -&gt; RDX<br>
 <em>flags</em> -&gt; RCX</p>
 <p>Creating a breakpoint in GDB to get the buff argument of the <em>send</em> function is quite straight forward.</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>(gdb)</strong> b send<br>
 <strong>…</strong><br>
 <strong>(gdb)</strong> commands<br>
@@ -62,14 +65,16 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>&gt;</strong> c<br>
 <strong>&gt;</strong> end<br>
 <strong>(gdb)</strong></p>
+</div>
 <p>Below we have the <em>recv</em> function signature, registers for the <em>recv</em> function are the same as for the <em>send</em> function.</p>
 <p><strong>ssize_t</strong> <em>recv</em>(<strong>int</strong> <em>sockfd</em>,<strong>void</strong> *<em>buf</em>, <strong>size_t</strong> <em>len</em>, <strong>int</strong> <em>flags</em>);</p>
 <p>The <em>recv</em> brakepoint it is a little bit more complicated because we need to read the <em>buf</em> argument pointer after the <em>recv</em> function finishes. So we have a couple of options in this case:</p>
 <ol>
-<li>Find every <em>recv</em> call and create breakpoints on the addresses following the call. We can script the process of getting all the cross references to this call using tools such as IDA Pro, Binary Ninja among others. But in some cases when dealing with function pointers or OOP programs we could miss some references if we do this from an static analysis point of view. Also we could end with too many breakpoints.</li>
-<li>Create a breakpoint command that create breakpoints dynamically. This option can save us time and shouldn’t miss any call to <em>recv</em> function.</li>
+<li>Find every <em>recv</em> call and create breakpoints on the addresses following the call. We can script the process of getting all the cross references to this call using tools such as IDA Pro, Binary Ninja among others. But in some cases when dealing with function pointers or OOP programs we could miss some references if we do this from a static analysis point of view. Also we could end with too many breakpoints.</li>
+<li>Create a breakpoint command that creates breakpoints dynamically. This option can save us time and shouldn’t miss any calls to <em>recv</em> function.</li>
 </ol>
-<p>Your executable has only one call to <em>recv</em> but I decide to do the second option just to show a way of creating dynamic temporary breakpoints.</p>
+<p>The challenges executables have only one call to <em>recv</em>, yet below I show a way to dynamically create temporary breakpoints.</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>(gdb)</strong> b recv<br>
 <strong>…</strong><br>
 <strong>(gdb)</strong> commands<br>
@@ -84,18 +89,20 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>&gt;</strong> c<br>
 <strong>&gt;</strong> end<br>
 <strong>(gdb)</strong></p>
-<p>The line below is the one that creates a temporary breakpoint on the return address store in the stack.</p>
+</div>
+<p>The line below is the one that creates a temporary breakpoint on the return address stored in the stack.</p>
 <p><strong>&gt;</strong> tb *(*(void**)($rsp))</p>
 <p><strong>NOTE:</strong> When <em>commands</em> doesn’t have the breakpoint id argument it will set the commands to execute for the last created breakpoint. In our case the temporary breakpoint we dynamically created.</p>
-<p>Now using this breakpoints and some reversing try to get the solution for tcp executable.</p>
+<p>Now using these breakpoints and some reversing try to get the solution for the tcp executable.</p>
 <h2 id="udp">UDP</h2>
-<p>For UDP communications <em>sendto</em> and <em>recvfrom</em> functions are used. Below we have the function signatures and the registers involve in both calls.</p>
+<p>For UDP communications <em>sendto</em> and <em>recvfrom</em> functions are used. Below we have the function signatures and the registers involved in both calls.</p>
 <p><strong>ssize_t</strong> sendto(<strong>int</strong> <em>sockfd</em>, <strong>const void</strong> *<em>buf</em>, <strong>size_t</strong> <em>len</em>, <strong>int</strong> <em>flags</em>, <strong>const struct sockaddr</strong> *<em>dest_addr</em>, <strong>socklen_t</strong>* <em>addrlen</em>);</p>
 <p><strong>ssize_t</strong> recvfrom(<strong>int</strong> <em>sockfd</em>,<strong>void</strong> *<em>buf</em>,<strong>size_t</strong> <em>len</em>,<strong>int</strong> <em>flags</em>, <strong>struct sockaddr</strong> *<em>src_addr</em>, <strong>socklen_t</strong> *<em>addrlen</em>);</p>
-<p>In both cases and as we already use on <em>send</em> and <em>recv</em> before the interesting registers are the following:</p>
+<p>In both cases and as we already used on <em>send</em> and <em>recv</em> before the interesting registers are the following:</p>
 <p><em>buf</em> -&gt; RSI<br>
 <em>len</em> -&gt; RDX</p>
-<p>So the breakpoints for this functions are almost the same as we use with TCP sockets.</p>
+<p>So the breakpoints for these functions are almost the same as we used with TCP sockets.</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>(gdb)</strong> b sendto<br>
 <strong>…</strong><br>
 <strong>(gdb)</strong> commands<br>
@@ -105,6 +112,8 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>&gt;</strong> c<br>
 <strong>&gt;</strong> end<br>
 <strong>(gdb)</strong></p>
+</div>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>(gdb)</strong> b recvfrom<br>
 <strong>…</strong><br>
 <strong>(gdb)</strong> commands<br>
@@ -119,10 +128,12 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>&gt;</strong> c<br>
 <strong>&gt;</strong> end<br>
 <strong>(gdb)</strong></p>
-<p>Now using this breakpoints and some reversing try to get the solution for udp executable.</p>
+</div>
+<p>Now using these breakpoints and some reversing try to get the solution for the udp executable.</p>
 <h2 id="ssl">SSL</h2>
 <p>In most cases when we are working with secure communications we usually want to analyze the protocol that is contained inside the encrypted frame. If we are working with a custom implementation we are going to need some analysis of how things are working.</p>
-<p>So, how we could analyze the network protocol inside the secure channel? We need to find the function that adds the secure layer to the network protocol. If we don’t have the information on the library the program is using, we could take for granted that one of the four functions we mention above(<em>recv</em>, <em>send</em>, <em>recvfrom</em>, <em>sendto</em>) is going to be use by this library to send the encrypted frames. As it was mention before developers can use <em>send</em> or <em>write</em> to interact with socket descriptors. So taking this into account, we create a breakpoint in <em>write</em> and <em>send</em> functions and use <em>bt</em> command to get a backtrace to analyze the call path and find this functions.</p>
+<p>So, how could we analyze the network protocol inside the secure channel? We need to find the function that adds the secure layer to the network protocol. If we don’t have the information on the library the program is using, we could take for granted that one of the four functions we mentioned above(<em>recv</em>, <em>send</em>, <em>recvfrom</em>, <em>sendto</em>) is going to be use by this library to send the encrypted frames. As it was mention before developers can use <em>send</em> or <em>write</em> to interact with socket descriptors. So taking this into account, we create a breakpoint in <em>write</em> and <em>send</em> functions and use the <em>bt</em> command to get a backtrace to analyze the call path and find these functions.</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p>Breakpoint 1, write () at …/sysdeps/unix/syscall-template.S:84<br>
 84      in …/sysdeps/unix/syscall-template.S<br>
 (gdb) bt<br>
@@ -137,9 +148,11 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>#8</strong>  0x0000000000400e70 in ?? ()<br>
 <strong>#9</strong>  0x00007ffff737f830 in __libc_start_main (main=0x400d06, argc=1, argv=0x7fffffffdf48, init=, fini=, rtld_fini=, stack_end=0x7fffffffdf38) at …/csu/libc-start.c:291<br>
 <strong>#10</strong> 0x0000000000400c39 in ?? ()</p>
-<p><strong>NOTE:</strong> Another way to do this, is to break on <em>socket</em> function and get the socket descriptor. Once we know where the socket descriptor is store in memory we can create a watchpoint(stop execution whenever the value of an expression changes). In both cases we need to perform some analysis to get the target function.</p>
-<p>As we saw in the backtrace above the target functions appears to be named <em>BIO_puts</em>.</p>
+</div>
+<p><strong>NOTE:</strong> Another way to do this, is to break on the <em>socket</em> function and get the socket descriptor. Once we know where the socket descriptor is stored in memory we can create a watchpoint(stop execution whenever the value of an expression changes). In both cases we need to perform some analysis to get the target function.</p>
+<p>As we saw in the backtrace above the target function appears to be named <em>BIO_puts</em>.</p>
 <p><strong>int</strong> <em>BIO_puts</em>(<strong>BIO</strong> <em>*b</em>,<strong>const char</strong> <em>*buf</em>);</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>(gdb)</strong> b BIO_puts<br>
 <strong>Breakpoint 1 at 0x00007ffff783a510 in BIO_puts () from /lib/x86_64-linux-gnu/libcrypto.so.1.0.0</strong><br>
 <strong>(gdb)</strong> commands<br>
@@ -149,7 +162,9 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>&gt;</strong> c<br>
 <strong>&gt;</strong> end<br>
 <strong>(gdb)</strong></p>
+</div>
 <p><strong>int</strong> <em>BIO_read</em>(<strong>BIO</strong> <em>*b</em>, <strong>void</strong> <em>*buf</em>, <strong>int</strong> <em>len</em>);</p>
+<div style="background-color: #000000; color: #fafafa; padding-left: 10px;">
 <p><strong>(gdb)</strong> b BIO_read<br>
 <strong>Breakpoint 2, 0x00007ffff783a310 in BIO_read () from /lib/x86_64-linux-gnu/libcrypto.so.1.0.0</strong><br>
 <strong>(gdb)</strong> commands<br>
@@ -165,7 +180,8 @@ As mention on Chapter 6 (Application Reverse Engineering) of the book, where to 
 <strong>&gt;</strong> c<br>
 <strong>&gt;</strong> end<br>
 <strong>(gdb)</strong></p>
-<p>Now using this breakpoints and some reversing try to get the solution for ssl executable.</p>
+</div>
+<p>Now using these breakpoints and some reversing try to get the solution for the ssl executable.</p>
 <h2 id="references">References</h2>
 <ol>
 <li>
