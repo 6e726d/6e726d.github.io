@@ -1,0 +1,48 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ekoparty #15 Challenges Writeups</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="stackedit">
+  <div class="stackedit__html"><h1 id="ekoparty-15-challenges-writeups">Ekoparty #15 Challenges Writeups</h1>
+<p>I know how it feels when a <em>CTF</em> or <em>Challenge</em> ends and you don't get the solution for a particular problem. So I decided to document how to solve the challenges I wrote for Ekoparty #15.<br></p>
+<p>There were two challenges to solve for the Hardware Implant Challenge.</p>
+
+<h3 id="first_challenge">1. First Challenge</h3>
+<p>You can download the challenge file <a href="https://6e726d.github.io/Challenge/Ekoparty15/files/00.logicdata">here</a>.</br>So what type of file uses <em>logicdata</em> extension. After a quick search of the file extension on Google, we get results pointing us to <a href="https://www.saleae.com">Saleae</a>. We download the logic analyzer software from the Saleae web site and open the challenge file.</p>
+<img src="files/00.png" />
+<p>We have only one channel and it's named TX, so this could be UART.</p>
+<img src="files/01.png" />
+<p>We also have two annotations. If we zoom in the first annotation.</p>
+<img src="files/02.png" />
+<p>Look like the annotation has the measurement for 1 bit. So based on this measure we could get the baud rate(bits per second).</p>
+<p>So based on this annotation we can get the following.</p>
+<p>1000000 &#xF7; 8.66 = 115473.441109.</p>
+<p>This number is very close to 115200, a known baud rate. So if we use the <em>Async Serial</em> analyzer.</p>
+<img src="files/03.png" />
+<p>We get the following:</p>
+<img src="files/04.png" />
+<p>But if we go to the second notation, the analyzer is not able to get data.</p>
+<img src="files/05.png" />
+<p>In the second anotation the measure is done is miliseconds instead of microseconds.</p>
+<p><center>1000 &#xF7; 3.34431 = 299.015342477.</center></p>
+<p>This number is very close to 300. So if we set baud rate to 300 in the <em>Async Serial</em> analyzer.</p>
+<img src="files/06.png" />
+<p>We get the following:</p>
+<img src="files/07.png" />
+We can get the flag.
+<p><em>IMM{c1b82410259463fadbd84ddab4965b69}</em></p>
+<h3 id="second_challenge">2. Second Challenge</h3>
+<p>You can download the challenge file <a href="https://6e726d.github.io/Challenge/Ekoparty15/files/01.logicdata">here</a>. When we open this file we get the following:</p>
+<img src="files/08.png" />
+<p>We could try different analyzers in this case, based on the data we can assume we have a SLAVE SELECT(aka CHIP SELECT) and a CLOCK channel. So this looks like <a href="https://en.wikipedia.org/wiki/Serial_Peripheral_Interface">SPI</a>. But if we use SPI analyzer we don't really get something useful, after a quick search on the web we found a <a href="https://github.com/kasjer/saleae_spiflash">SPI Flash analyzer.</a></p>
+<p>Once the SPI Flash analyzer is build we need to setup the channel configuration.</p>
+<img src="files/09.png" />
+<p>And finally we get the flag.</p>
+<img src="files/10.png" />
+<p><em>IMM{SPY_VS_SPY}</em></p>
+</body>
+</html>
